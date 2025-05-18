@@ -5,14 +5,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
+import java.net.JarURLConnection;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public final class AnnotationScanner {
     private final ClassLoader classLoader;
     private final String basePackage;
     private final boolean useCache;
+    private final boolean isJar;
     private final HashMap<Class<? extends Annotation>, List<Class<?>>> cachedClasses;
 
     /**
@@ -26,6 +31,9 @@ public final class AnnotationScanner {
         this.basePackage = basePackage;
         this.useCache = useCache;
         this.cachedClasses = new HashMap<>();
+
+        isJar = classLoader.getResource(getClass().getName().replace('.', '/') + ".class")
+                .getProtocol().equals("jar");
     }
 
     public AnnotationScanner(String basePackage) {
@@ -44,17 +52,26 @@ public final class AnnotationScanner {
      */
     public List<Class<?>> findClassesWithAnnotation(Class<? extends Annotation> annotation) {
         if(!cachedClasses.containsKey(annotation) || !useCache) {
-            InputStream inputStream = classLoader.getResourceAsStream(basePackage.replace(".", "/"));
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
             List<Class<?>> classes = new ArrayList<>();
 
-            try {
-                for (String line = reader.readLine(); line != null; line = reader.readLine()) {
-                    recursiveModuleFinder(line, "", classes, annotation);
+            if(isJar) {
+                // Jar must have special algorithms
+                try {
+                    findClassesInJar(annotation, classes);
+                } catch (IOException | ClassNotFoundException e) {
+                    throw new RuntimeException(e);
                 }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            } else {
+                InputStream inputStream = classLoader.getResourceAsStream(basePackage.replace(".", "/"));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                try {
+                    for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                        recursiveModuleFinder(line, "", classes, annotation);
+                    }
+                    reader.close();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             if(useCache)
@@ -65,10 +82,34 @@ public final class AnnotationScanner {
     }
 
     /**
-     * Recursive search for all classes in package (nested);
+     * Search for class in jar file (uses JarURLConnection).
+     * @param annotation - annotation class to check on
+     * @param classes - list to add found class
+     */
+    private void findClassesInJar(Class<? extends Annotation> annotation, List<Class<?>> classes) throws IOException, ClassNotFoundException {
+        JarURLConnection connection = (JarURLConnection) classLoader
+                .getResource(basePackage.replace(".", "/")).openConnection();
+
+        JarFile jarFile = connection.getJarFile();
+        Enumeration<JarEntry> entries = jarFile.entries();
+
+        for(JarEntry entry = entries.nextElement(); entry != null && entries.hasMoreElements(); entry = entries.nextElement()) {
+            String name = entry.getName();
+            // Scans all files in jar, so we need to check if it scans in right place of jar
+            if(name.startsWith(basePackage.replace(".", "/")) && name.endsWith(".class")) {
+                Class<?> clazz = Class.forName(name.replace("/", ".").substring(0, name.length() - 6));
+                if (clazz.isAnnotationPresent(annotation))
+                    classes.add(clazz);
+            }
+        }
+    }
+
+    /**
+     * Recursive search for all classes in package (nested).
      * @param moduleName - a name of class OR package, that was scanned
      * @param packageName - nested package name (empty, if it's root)
      * @param classes - list to add found class
+     * @param annotation -
      */
     private void recursiveModuleFinder(String moduleName, String packageName, List<Class<?>> classes,
                                        Class<? extends Annotation> annotation) {
@@ -85,11 +126,11 @@ public final class AnnotationScanner {
             InputStream inputStream = classLoader.getResourceAsStream((basePackage + packageName).replace(".", "/") + "/" + moduleName);
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-
             try {
                 for (String line = reader.readLine(); line != null; line = reader.readLine()) {
                     recursiveModuleFinder(line, packageName + "." + moduleName, classes, annotation);
                 }
+                reader.close();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

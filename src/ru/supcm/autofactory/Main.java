@@ -2,7 +2,6 @@ package ru.supcm.autofactory;
 
 import ru.supcm.autofactory.util.IModuleFactory;
 import ru.supcm.autofactory.util.Singleton;
-
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
@@ -15,8 +14,8 @@ public class Main {
     public static void main(String[] args) throws IOException, ClassNotFoundException {
         AnnotationScanner finder = new AnnotationScanner("ru.supcm.autofactory");
         //Search for classes with defined annotations in defined base package
-        List<Class<?>> classes = finder.findClassesWithAnnotation(Module.class);
 
+        List<Class<?>> classes = finder.findClassesWithAnnotation(Module.class);
         //Registering annotated classes
         for(final Class<?> clazz : classes) {
             REGISTRY.put(clazz.getAnnotation(Module.class).name(),
