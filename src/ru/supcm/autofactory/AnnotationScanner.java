@@ -6,10 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
 import java.net.JarURLConnection;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -93,7 +90,8 @@ public final class AnnotationScanner {
         JarFile jarFile = connection.getJarFile();
         Enumeration<JarEntry> entries = jarFile.entries();
 
-        for(JarEntry entry = entries.nextElement(); entry != null && entries.hasMoreElements(); entry = entries.nextElement()) {
+        for (Iterator<JarEntry> it = entries.asIterator(); it.hasNext(); ) {
+            JarEntry entry = it.next();
             String name = entry.getName();
             // Scans all files in jar, so we need to check if it scans in right place of jar
             if(name.startsWith(basePackage.replace(".", "/")) && name.endsWith(".class")) {
